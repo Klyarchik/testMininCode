@@ -19,3 +19,7 @@ class ReturnUserSchema(BaseModel):
 class EnterUserSchema(BaseModel):
     email: EmailStr
     password: str
+
+class PutPasswordSchema(BaseModel):
+    old_password: str
+    new_password: str

@@ -1,6 +1,6 @@
 import base64
 
-from fastapi import APIRouter, HTTPException, Response, Request
+from fastapi import APIRouter, HTTPException, Response, Request, UploadFile, File, Form
 from fastapi.params import Depends
 from sqlalchemy import select
 import bcrypt
@@ -8,7 +8,7 @@ import bcrypt
 from db.models import SessionDep, UserModel
 from jwt_settings import security, config
 from pydantic_classes import RegUserSchema, ReturnDetailSchema, ReturnAccessTokenSchema, ReturnUserSchema, \
-    EnterUserSchema
+    EnterUserSchema, PutPasswordSchema
 
 auth_router = APIRouter(prefix="/auth")
 
@@ -58,5 +58,46 @@ async def enter(session: SessionDep, body: EnterUserSchema, resposne: Response) 
     if not bcrypt.checkpw(body.password.encode(), user.password):
         raise HTTPException(status_code=404, detail="Неверный логин или пароль")
     access_token = security.create_access_token(uid=str(user.id))
-    resposne.set_cookie(config.JWT_ACCESS_COOKIE_NAME, access_token)
+    resposne.set_cookie(config.JWT_ACCESS_COOKIE_NAME, access_token, httponly=True, samesite="lax", secure=False)
     return {"access_token": access_token}
+
+
+@auth_router.put("/password", tags=["auth"], description="Измение пароля",
+                 dependencies=[Depends(security.access_token_required)])
+async def change_password(body: PutPasswordSchema, request: Request, session: SessionDep) -> ReturnDetailSchema:
+    access_token = request.cookies.get(config.JWT_ACCESS_COOKIE_NAME)
+    id = int(security._decode_token(access_token).sub)
+    query = select(UserModel).filter(UserModel.id == id)
+    result = await session.execute(query)
+    user = result.scalar_one()
+    if not bcrypt.checkpw(body.old_password.encode(), user.password):
+        raise HTTPException(status_code=409, detail="Неверный старый пароль")
+    user.password = bcrypt.hashpw(body.new_password.encode(), bcrypt.gensalt())
+    await session.commit()
+    return {"detail": "Пароль изменился"}
+
+
+@auth_router.put("/profile", tags=["auth"], description="Изменение профилия",
+                 dependencies=[Depends(security.access_token_required)])
+async def change_profile(request: Request, session: SessionDep, email: str = Form(None),
+                         avatar: UploadFile = File(None), name: str = Form(None)) -> ReturnDetailSchema:
+    access_token = request.cookies.get(config.JWT_ACCESS_COOKIE_NAME)
+    id = int(security._decode_token(access_token).sub)
+    if email:
+        query = select(UserModel).filter((UserModel.email == email) & (UserModel.id != id))
+        result = await session.execute(query)
+        if result.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Такой email уже используется")
+    if avatar and not avatar.content_type.startswith('image/'):
+        raise HTTPException(status_code=423, detail="Аватарка может быть только картинкой")
+    query = select(UserModel).filter(UserModel.id == id)
+    result = await session.execute(query)
+    user = result.scalar_one()
+    if email:
+        user.email = email
+    if name:
+        user.name = name
+    if avatar:
+        user.avatar = await avatar.read()
+    await session.commit()
+    return {"detail": "Профиль изменён"}
