@@ -37,6 +37,7 @@ const Reg = () => {
 
       console.log('response: ', response)
       alert('Вы успешно зарегистрировались!')
+      navigate('/')
     } catch (error){
       alert('Ошибка авторизации\n ', (error.response?.data?.message || error.message))
     }
@@ -51,7 +52,7 @@ const Reg = () => {
       <InputAuth ref={usernameRef} type="text" placeholder="Юзернейм"/><br/>
       <InputAuth ref={passwordRef} type="password" placeholder="Пароль"/><br/>
       <InputAuth ref={returnPasswordRef} type="password" placeholder="Повторите пароль"/><br/>
-      
+
 
       <button onClick={() => {
         const dataUser = {
@@ -61,7 +62,7 @@ const Reg = () => {
         }
         regUser(dataUser)
       }}>
-        Клик
+        Зарегистрироваться
       </button>
     </div>
   )
